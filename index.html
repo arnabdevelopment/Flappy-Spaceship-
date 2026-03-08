@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Flappy Spaceship</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Courier New', monospace;
+    touch-action: none;
+  }
+  #gameWrapper {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  canvas {
+    display: block;
+    image-rendering: pixelated;
+  }
+  #ui {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .screen {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    background: rgba(5, 10, 30, 0.92);
+    border: 2px solid #00ffff;
+    border-radius: 16px;
+    padding: 32px 40px;
+    box-shadow: 0 0 40px #00ffff55, 0 0 80px #7700ff33;
+    min-width: 300px;
+    pointer-events: all;
+  }
+  .screen.active { display: flex; }
+  .screen h1 {
+    color: #00ffff;
+    font-size: 2.2em;
+    text-shadow: 0 0 16px #00ffff, 0 0 32px #00aaff;
+    letter-spacing: 4px;
+    margin-bottom: 8px;
+  }
+  .screen h2 {
+    color: #cc44ff;
+    font-size: 1.4em;
+    text-shadow: 0 0 12px #cc44ff;
+    letter-spacing: 3px;
+    margin-bottom: 18px;
+  }
+  .score-display {
+    color: #fff;
+    font-size: 1.1em;
+    margin: 6px 0;
+    letter-spacing: 2px;
+  }
+  .score-display span {
+    color: #00ffff;
+    font-weight: bold;
+  }
+  .btn {
+    margin-top: 22px;
+    padding: 12px 36px;
+    background: linear-gradient(135deg, #0033aa, #6600cc);
+    color: #00ffff;
+    border: 2px solid #00ffff;
+    border-radius: 8px;
+    font-size: 1.1em;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 3px;
+    cursor: pointer;
+    text-transform: uppercase;
+    box-shadow: 0 0 18px #00ffff55;
+    transition: all 0.15s;
+  }
+  .btn:hover, .btn:active {
+    background: linear-gradient(135deg, #0055ff, #9900ff);
+    box-shadow: 0 0 30px #00ffff99;
+    transform: scale(1.05);
+  }
+  .subtitle {
+    color: #7788aa;
+    font-size: 0.82em;
+    margin-top: 6px;
+    letter-spacing: 2px;
+  }
+  .tap-hint {
+    color: #cc44ff;
+    font-size: 0.95em;
+    margin-top: 14px;
+    animation: blink 1.2s infinite;
+    letter-spacing: 2px;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+  #hud {
+    position: absolute;
+    top: 16px;
+    left: 0; right: 0;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 24px;
+    pointer-events: none;
+  }
+  .hud-box {
+    background: rgba(0,0,40,0.7);
+    border: 1px solid #00ffff55;
+    border-radius: 8px;
+    padding: 6px 16px;
+    color: #00ffff;
+    font-size: 1em;
+    letter-spacing: 2px;
+    text-shadow: 0 0 8px #00ffff;
+  }
+  .hud-box span { color: #fff; }
+  #credit {
+    position: absolute;
+    bottom: 10px;
+    right: 16px;
+    color: #445566;
+    font-size: 0.72em;
+    letter-spacing: 2px;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="gameWrapper">
+  <canvas id="gameCanvas"></canvas>
+  <div id="ui">
+    <div id="hudDisplay" id="hud" style="position:absolute;top:16px;left:0;right:0;display:none;justify-content:space-between;padding:0 24px;pointer-events:none;">
+      <div class="hud-box">SCORE: <span id="scoreDisplay">0</span></div>
+      <div class="hud-box">BEST: <span id="bestDisplay">0</span></div>
+    </div>
+
+    <div id="startScreen" class="screen active">
+      <h1>⚡ FLAPPY</h1>
+      <h2>SPACESHIP</h2>
+      <div class="score-display">BEST SCORE: <span id="startBest">0</span></div>
+      <div class="tap-hint">[ TAP / CLICK / SPACE TO START ]</div>
+      <div class="subtitle">Made By Arnab Ghosh</div>
+    </div>
+
+    <div id="gameOverScreen" class="screen">
+      <h1>GAME OVER</h1>
+      <div class="score-display">SCORE: <span id="finalScore">0</span></div>
+      <div class="score-display">HIGH SCORE: <span id="highScore">0</span></div>
+      <button class="btn" id="restartBtn">↩ RESTART</button>
+      <div class="subtitle" style="margin-top:12px;">Made By Arnab Ghosh</div>
+    </div>
+  </div>
+  <div id="credit">Made By Arnab Ghosh</div>
+</div>
+
+<script>
+// ─── Canvas Setup ───────────────────────────────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const wrapper = document.getElementById('gameWrapper');
+
+function resize() {
+  const W = window.innerWidth, H = window.innerHeight;
+  canvas.width = W; canvas.height = H;
+}
+resize();
+window.addEventListener('resize', () => { resize(); if(state==='playing') initGame(false); });
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let state = 'start'; // start | playing | dead
+let score = 0, highScore = parseInt(localStorage.getItem('flappySpaceHS')||'0');
+let ship, pipes, stars, particles, thrusterParticles;
+let animId;
+
+// ─── Audio (Web Audio API SFX) ───────────────────────────────────────────────
+const AC = new (window.AudioContext || window.webkitAudioContext)();
+
+function playTone(type, freq, dur, vol=0.18, detune=0) {
+  try {
+    const o = AC.createOscillator();
+    const g = AC.createGain();
+    o.connect(g); g.connect(AC.destination);
+    o.type = type; o.frequency.value = freq;
+    if(detune) o.detune.value = detune;
+    g.gain.setValueAtTime(vol, AC.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, AC.currentTime + dur);
+    o.start(); o.stop(AC.currentTime + dur);
+  } catch(e){}
+}
+
+function sfxBoost() {
+  playTone('sawtooth', 320, 0.12, 0.13);
+  playTone('sine', 600, 0.08, 0.08);
+}
+function sfxScore() {
+  playTone('sine', 880, 0.12, 0.15);
+  setTimeout(()=>playTone('sine', 1200, 0.1, 0.12), 80);
+}
+function sfxDie() {
+  playTone('sawtooth', 200, 0.15, 0.2);
+  playTone('square', 100, 0.3, 0.18);
+  setTimeout(()=>playTone('sawtooth', 80, 0.4, 0.18), 100);
+}
+function sfxStart() {
+  playTone('sine', 440, 0.1, 0.12);
+  setTimeout(()=>playTone('sine', 660, 0.1, 0.12), 100);
+  setTimeout(()=>playTone('sine', 880, 0.15, 0.15), 200);
+}
+function sfxMilestone() {
+  [440,550,660,880].forEach((f,i)=>setTimeout(()=>playTone('sine',f,0.15,0.13),i*60));
+}
+
+// ─── Spaceship Sprite (pixel art from provided image) ────────────────────────
+function drawSpaceship(x, y, w, h, tilt) {
+  ctx.save();
+  ctx.translate(x + w/2, y + h/2);
+  ctx.rotate(tilt);
+
+  const s = w / 100;
+  // Body
+  ctx.fillStyle = '#1a2a4a';
+  ctx.beginPath();
+  ctx.moveTo(-50*s, -14*s);
+  ctx.lineTo(30*s, -20*s);
+  ctx.lineTo(50*s, 0);
+  ctx.lineTo(30*s, 20*s);
+  ctx.lineTo(-50*s, 14*s);
+  ctx.closePath();
+  ctx.fill();
+
+  // Teal hull overlay
+  ctx.fillStyle = '#1aa8b8';
+  ctx.beginPath();
+  ctx.moveTo(-44*s, -10*s);
+  ctx.lineTo(26*s, -16*s);
+  ctx.lineTo(44*s, 0);
+  ctx.lineTo(26*s, 16*s);
+  ctx.lineTo(-44*s, 10*s);
+  ctx.closePath();
+  ctx.fill();
+
+  // Purple trim top
+  ctx.fillStyle = '#8833cc';
+  ctx.fillRect(-30*s, -20*s, 40*s, 5*s);
+
+  // Cockpit window
+  ctx.fillStyle = '#0a1528';
+  ctx.beginPath();
+  ctx.ellipse(22*s, 0, 18*s, 14*s, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = '#00ddcc44';
+  ctx.beginPath();
+  ctx.ellipse(20*s, -1*s, 14*s, 11*s, 0, 0, Math.PI*2);
+  ctx.fill();
+  // Pilot
+  ctx.fillStyle = '#6644aa';
+  ctx.beginPath();
+  ctx.arc(22*s, 2*s, 6*s, 0, Math.PI*2);
+  ctx.fill();
+  // Green screen
+  ctx.fillStyle = '#00ff44';
+  ctx.fillRect(10*s, -4*s, 8*s, 6*s);
+
+  // Engine pods
+  ctx.fillStyle = '#334466';
+  ctx.fillRect(-50*s, -18*s, 22*s, 8*s);
+  ctx.fillRect(-50*s, 10*s, 22*s, 8*s);
+
+  // Engine rings
+  for(let i=0;i<3;i++){
+    ctx.fillStyle = i%2===0?'#226688':'#445588';
+    ctx.fillRect((-50+i*4)*s, -18*s, 3*s, 8*s);
+    ctx.fillRect((-50+i*4)*s, 10*s, 3*s, 8*s);
+  }
+
+  // Circuits/panels on body
+  ctx.strokeStyle = '#00ffff55';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-20*s, -8*s); ctx.lineTo(0*s, -8*s);
+  ctx.moveTo(-20*s, 0); ctx.lineTo(10*s, 0);
+  ctx.moveTo(-20*s, 8*s); ctx.lineTo(0*s, 8*s);
+  ctx.stroke();
+
+  // Top fin
+  ctx.fillStyle = '#6622aa';
+  ctx.beginPath();
+  ctx.moveTo(-10*s, -14*s);
+  ctx.lineTo(5*s, -14*s);
+  ctx.lineTo(-5*s, -28*s);
+  ctx.closePath();
+  ctx.fill();
+
+  // Bottom skid
+  ctx.fillStyle = '#6622aa';
+  ctx.fillRect(-20*s, 16*s, 30*s, 4*s);
+
+  // Barrel/gun
+  ctx.fillStyle = '#223355';
+  ctx.fillRect(-8*s, -22*s, 3*s, 6*s);
+
+  ctx.restore();
+}
+
+// ─── Pipe drawing ─────────────────────────────────────────────────────────────
+function drawPipe(x, top, bottom, W, H) {
+  const cw = canvas.width;
+  const ch = canvas.height;
+
+  // Top pipe
+  const grad1 = ctx.createLinearGradient(x, 0, x+W, 0);
+  grad1.addColorStop(0, '#0d3344');
+  grad1.addColorStop(0.3, '#1aa8b8');
+  grad1.addColorStop(0.7, '#0d6688');
+  grad1.addColorStop(1, '#0a2233');
+  ctx.fillStyle = grad1;
+  ctx.fillRect(x, 0, W, top);
+
+  // Top pipe cap
+  ctx.fillStyle = '#8833cc';
+  ctx.fillRect(x - 6, top - 22, W + 12, 22);
+  ctx.fillStyle = '#00ffff';
+  ctx.fillRect(x - 6, top - 24, W + 12, 3);
+  // circuit lines on top pipe
+  ctx.strokeStyle = '#00ffff33';
+  ctx.lineWidth = 1;
+  for(let i=30; i<top-22; i+=30){
+    ctx.beginPath();
+    ctx.moveTo(x+8, i); ctx.lineTo(x+W-8, i);
+    ctx.stroke();
+  }
+
+  // Bottom pipe
+  const grad2 = ctx.createLinearGradient(x, 0, x+W, 0);
+  grad2.addColorStop(0, '#0d3344');
+  grad2.addColorStop(0.3, '#1aa8b8');
+  grad2.addColorStop(0.7, '#0d6688');
+  grad2.addColorStop(1, '#0a2233');
+  ctx.fillStyle = grad2;
+  ctx.fillRect(x, bottom, W, ch - bottom);
+
+  // Bottom pipe cap
+  ctx.fillStyle = '#8833cc';
+  ctx.fillRect(x - 6, bottom, W + 12, 22);
+  ctx.fillStyle = '#00ffff';
+  ctx.fillRect(x - 6, bottom + 21, W + 12, 3);
+  // circuit lines
+  for(let i=bottom+30; i<ch; i+=30){
+    ctx.beginPath();
+    ctx.moveTo(x+8, i); ctx.lineTo(x+W-8, i);
+    ctx.stroke();
+  }
+
+  // Glow on gap edges
+  const glow1 = ctx.createLinearGradient(0, top-8, 0, top+16);
+  glow1.addColorStop(0, '#cc44ff00');
+  glow1.addColorStop(0.5, '#cc44ff44');
+  glow1.addColorStop(1, '#cc44ff00');
+  ctx.fillStyle = glow1;
+  ctx.fillRect(x-8, top-8, W+16, 24);
+
+  const glow2 = ctx.createLinearGradient(0, bottom-8, 0, bottom+16);
+  glow2.addColorStop(0, '#cc44ff00');
+  glow2.addColorStop(0.5, '#cc44ff44');
+  glow2.addColorStop(1, '#cc44ff00');
+  ctx.fillStyle = glow2;
+  ctx.fillRect(x-8, bottom-8, W+16, 24);
+}
+
+// ─── Background ───────────────────────────────────────────────────────────────
+function initStars() {
+  stars = [];
+  for(let i=0;i<180;i++) {
+    stars.push({
+      x: Math.random()*canvas.width,
+      y: Math.random()*canvas.height,
+      r: Math.random()*1.8+0.2,
+      speed: Math.random()*0.6+0.1,
+      blink: Math.random()*Math.PI*2,
+      color: ['#ffffff','#aaccff','#cc88ff','#88ffff'][Math.floor(Math.random()*4)]
+    });
+  }
+}
+
+function drawBg() {
+  // Deep space gradient
+  const bg = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  bg.addColorStop(0, '#050515');
+  bg.addColorStop(0.4, '#0a0525');
+  bg.addColorStop(1, '#050520');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Nebula clouds
+  const nebula = ctx.createRadialGradient(canvas.width*0.3, canvas.height*0.4, 20, canvas.width*0.3, canvas.height*0.4, canvas.width*0.4);
+  nebula.addColorStop(0, '#2200440a');
+  nebula.addColorStop(0.5, '#11002208');
+  nebula.addColorStop(1, 'transparent');
+  ctx.fillStyle = nebula;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const nebula2 = ctx.createRadialGradient(canvas.width*0.75, canvas.height*0.6, 10, canvas.width*0.75, canvas.height*0.6, canvas.width*0.35);
+  nebula2.addColorStop(0, '#00224408');
+  nebula2.addColorStop(1, 'transparent');
+  ctx.fillStyle = nebula2;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Stars
+  const t = Date.now()/1000;
+  for(const s of stars) {
+    const alpha = 0.5 + 0.5*Math.sin(t*1.5 + s.blink);
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+    ctx.fillStyle = s.color + Math.floor(alpha*255).toString(16).padStart(2,'0');
+    ctx.fill();
+    if(s.r > 1.2) {
+      ctx.strokeStyle = s.color + '33';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(s.x-s.r*3,s.y); ctx.lineTo(s.x+s.r*3,s.y);
+      ctx.moveTo(s.x,s.y-s.r*3); ctx.lineTo(s.x,s.y+s.r*3);
+      ctx.stroke();
+    }
+  }
+}
+
+function updateStars(speed) {
+  for(const s of stars) {
+    s.x -= s.speed * speed * 0.3;
+    if(s.x < 0) { s.x = canvas.width; s.y = Math.random()*canvas.height; }
+  }
+}
+
+// ─── Particles ────────────────────────────────────────────────────────────────
+function spawnParticles(x, y, count, colors) {
+  for(let i=0;i<count;i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random()-0.5)*6,
+      vy: (Math.random()-0.5)*6,
+      life: 1,
+      decay: Math.random()*0.04+0.02,
+      r: Math.random()*4+1,
+      color: colors[Math.floor(Math.random()*colors.length)]
+    });
+  }
+}
+
+function updateParticles() {
+  for(let i=particles.length-1;i>=0;i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy;
+    p.vy += 0.1;
+    p.life -= p.decay;
+    if(p.life <= 0) particles.splice(i,1);
+  }
+}
+
+function drawParticles() {
+  for(const p of particles) {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function updateThruster() {
+  // Add thruster particles continuously
+  if(ship && state==='playing') {
+    const ex = ship.x - 8;
+    const ey = ship.y + ship.h*0.3;
+    const ey2 = ship.y + ship.h*0.7;
+    for(let e of [ey, ey2]) {
+      thrusterParticles.push({
+        x: ex, y: e + (Math.random()-0.5)*4,
+        vx: -(Math.random()*4+3),
+        vy: (Math.random()-0.5)*1.5,
+        life: 1,
+        decay: Math.random()*0.08+0.06,
+        r: Math.random()*5+2,
+        phase: Math.random()*Math.PI*2
+      });
+    }
+  }
+  for(let i=thrusterParticles.length-1;i>=0;i--) {
+    const p = thrusterParticles[i];
+    p.x += p.vx; p.y += p.vy;
+    p.life -= p.decay;
+    if(p.life<=0) thrusterParticles.splice(i,1);
+  }
+}
+
+function drawThruster() {
+  for(const p of thrusterParticles) {
+    const t = p.life;
+    const r = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.r*2);
+    r.addColorStop(0, `rgba(200,240,255,${t*0.9})`);
+    r.addColorStop(0.4, `rgba(0,180,255,${t*0.7})`);
+    r.addColorStop(1, `rgba(100,0,255,0)`);
+    ctx.fillStyle = r;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r*2, 0, Math.PI*2);
+    ctx.fill();
+  }
+}
+
+// ─── Game Init ────────────────────────────────────────────────────────────────
+function getConfig() {
+  const W = canvas.width, H = canvas.height;
+  const isPortrait = H > W;
+  return {
+    W, H,
+    shipW: isPortrait ? W*0.14 : W*0.1,
+    shipH: isPortrait ? W*0.07 : W*0.05,
+    gravity: isPortrait ? 0.35 : 0.42,
+    flapForce: isPortrait ? -7.5 : -9,
+    pipeW: isPortrait ? W*0.08 : W*0.07,
+    gapMin: isPortrait ? H*0.28 : H*0.3,
+    gapMax: isPortrait ? H*0.42 : H*0.45,
+    baseSpeed: isPortrait ? 3.5 : 4.5,
+    spawnDist: isPortrait ? W*0.65 : W*0.55,
+  };
+}
+
+function initGame(full=true) {
+  const cfg = getConfig();
+  if(full) {
+    score = 0;
+    document.getElementById('scoreDisplay').textContent = '0';
+    document.getElementById('bestDisplay').textContent = highScore;
+  }
+
+  ship = {
+    x: cfg.W * 0.18,
+    y: cfg.H / 2 - cfg.shipH/2,
+    w: cfg.shipW,
+    h: cfg.shipH,
+    vy: 0,
+    tilt: 0,
+    invincible: 60
+  };
+
+  pipes = [];
+  particles = particles || [];
+  thrusterParticles = thrusterParticles || [];
+  if(full) {
+    particles = [];
+    thrusterParticles = [];
+  }
+  initStars();
+}
+
+// ─── Pipe Spawning ────────────────────────────────────────────────────────────
+function spawnPipe() {
+  const cfg = getConfig();
+  const gap = cfg.gapMin + Math.random()*(cfg.gapMax - cfg.gapMin);
+  const minTop = cfg.H * 0.12;
+  const maxTop = cfg.H - gap - cfg.H * 0.12;
+  const top = minTop + Math.random()*(maxTop - minTop);
+  pipes.push({
+    x: cfg.W + 10,
+    top,
+    bottom: top + gap,
+    w: cfg.pipeW,
+    scored: false
+  });
+}
+
+// ─── Speed calc ───────────────────────────────────────────────────────────────
+function getSpeed() {
+  const cfg = getConfig();
+  return cfg.baseSpeed * Math.pow(1.05, Math.floor(score/10));
+}
+
+// ─── Collision ────────────────────────────────────────────────────────────────
+function checkCollision() {
+  const s = ship;
+  const margin = s.w * 0.18;
+  const sx = s.x + margin, sy = s.y + margin;
+  const sw = s.w - margin*2, sh = s.h - margin*2;
+
+  if(sy < 0 || sy+sh > canvas.height) return true;
+
+  for(const p of pipes) {
+    if(sx+sw > p.x && sx < p.x+p.w) {
+      if(sy < p.top || sy+sh > p.bottom) return true;
+    }
+  }
+  return false;
+}
+
+// ─── HUD ─────────────────────────────────────────────────────────────────────
+function drawHUD() {
+  const W = canvas.width, H = canvas.height;
+  // Score
+  ctx.fillStyle = 'rgba(0,0,30,0.6)';
+  ctx.beginPath();
+  ctx.roundRect(W/2-70, 12, 140, 38, 10);
+  ctx.fill();
+  ctx.strokeStyle = '#00ffff55';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = '#00ffff';
+  ctx.font = `bold ${Math.min(26, W*0.04)}px 'Courier New'`;
+  ctx.textAlign = 'center';
+  ctx.fillText(score, W/2, 39);
+
+  // Best
+  ctx.fillStyle = 'rgba(0,0,30,0.6)';
+  ctx.beginPath();
+  ctx.roundRect(W-130, 12, 118, 38, 10);
+  ctx.fill();
+  ctx.strokeStyle = '#cc44ff55';
+  ctx.stroke();
+  ctx.fillStyle = '#cc44ff';
+  ctx.font = `${Math.min(13, W*0.02)}px 'Courier New'`;
+  ctx.textAlign = 'center';
+  ctx.fillText('BEST', W-71, 27);
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${Math.min(18, W*0.03)}px 'Courier New'`;
+  ctx.fillText(highScore, W-71, 43);
+
+  // Difficulty badge
+  const lvl = Math.floor(score/10)+1;
+  ctx.fillStyle = 'rgba(0,0,30,0.6)';
+  ctx.beginPath();
+  ctx.roundRect(12, 12, 90, 38, 10);
+  ctx.fill();
+  ctx.strokeStyle = '#ffaa0055';
+  ctx.stroke();
+  ctx.fillStyle = '#ffaa00';
+  ctx.font = `${Math.min(11,W*0.018)}px 'Courier New'`;
+  ctx.textAlign = 'center';
+  ctx.fillText('LEVEL', 57, 27);
+  ctx.font = `bold ${Math.min(18,W*0.028)}px 'Courier New'`;
+  ctx.fillText(lvl, 57, 43);
+
+  ctx.textAlign = 'left';
+}
+
+// ─── Milestone Particles ──────────────────────────────────────────────────────
+function showMilestone() {
+  sfxMilestone();
+  spawnParticles(canvas.width/2, canvas.height/2, 40, ['#00ffff','#cc44ff','#ffaa00','#ffffff','#00ff88']);
+}
+
+// ─── Main Loop ────────────────────────────────────────────────────────────────
+let lastPipeX = 0;
+let frameCount = 0;
+
+function gameLoop() {
+  animId = requestAnimationFrame(gameLoop);
+  const cfg = getConfig();
+  const speed = getSpeed();
+
+  // BG
+  drawBg();
+  updateStars(speed);
+
+  if(state === 'playing') {
+    frameCount++;
+
+    // Ship physics
+    ship.vy += cfg.gravity;
+    ship.y += ship.vy;
+    ship.tilt = Math.max(-0.55, Math.min(0.65, ship.vy * 0.065));
+
+    // Pipe spawn
+    if(pipes.length===0 || canvas.width - pipes[pipes.length-1].x > cfg.spawnDist) {
+      spawnPipe();
+    }
+
+    // Move pipes
+    for(const p of pipes) {
+      p.x -= speed;
+      if(!p.scored && p.x + p.w < ship.x) {
+        p.scored = true;
+        score++;
+        document.getElementById('scoreDisplay').textContent = score;
+        if(score % 10 === 0) showMilestone();
+        else sfxScore();
+      }
+    }
+
+    // Remove offscreen pipes
+    pipes = pipes.filter(p => p.x + p.w > -20);
+
+    // Thruster
+    updateThruster();
+    drawThruster();
+
+    // Draw pipes
+    for(const p of pipes) drawPipe(p.x, p.top, p.bottom, p.w, canvas.height);
+
+    // Draw ship
+    if(ship.invincible > 0) {
+      ship.invincible--;
+      if(Math.floor(ship.invincible/4)%2===0) {
+        drawSpaceship(ship.x, ship.y, ship.w, ship.h, ship.tilt);
+      }
+    } else {
+      drawSpaceship(ship.x, ship.y, ship.w, ship.h, ship.tilt);
+    }
+
+    // Particles
+    updateParticles();
+    drawParticles();
+    drawHUD();
+
+    // Collision
+    if(ship.invincible <= 0 && checkCollision()) {
+      sfxDie();
+      spawnParticles(ship.x+ship.w/2, ship.y+ship.h/2, 50, ['#00ffff','#cc44ff','#ff4400','#ffaa00','#ffffff']);
+      state = 'dead';
+      if(score > highScore) {
+        highScore = score;
+        localStorage.setItem('flappySpaceHS', highScore);
+      }
+      document.getElementById('finalScore').textContent = score;
+      document.getElementById('highScore').textContent = highScore;
+      setTimeout(()=>{
+        document.getElementById('gameOverScreen').classList.add('active');
+      }, 700);
+    }
+
+  } else if(state === 'dead') {
+    // Draw final scene
+    updateThruster();
+    drawThruster();
+    for(const p of pipes) drawPipe(p.x, p.top, p.bottom, p.w, canvas.height);
+    // draw crashed ship (slightly red tinted)
+    ctx.globalAlpha = 0.5;
+    drawSpaceship(ship.x, ship.y, ship.w, ship.h, 0.8);
+    ctx.globalAlpha = 1;
+    updateParticles();
+    drawParticles();
+    drawHUD();
+
+  } else {
+    // start / idle - animate ship floating
+    const t = Date.now()/1000;
+    if(!ship) initGame();
+    ship.y = canvas.height/2 - ship.h/2 + Math.sin(t*2)*12;
+    ship.tilt = Math.sin(t*2)*0.1;
+    updateThruster();
+    drawThruster();
+    drawSpaceship(ship.x, ship.y, ship.w, ship.h, ship.tilt);
+  }
+
+  // Credit
+  ctx.fillStyle = '#334455';
+  ctx.font = `${Math.min(11,canvas.width*0.015)}px 'Courier New'`;
+  ctx.textAlign = 'right';
+  ctx.fillText('Made By Arnab Ghosh', canvas.width-10, canvas.height-8);
+  ctx.textAlign = 'left';
+}
+
+// ─── Input ────────────────────────────────────────────────────────────────────
+function flap() {
+  if(AC.state === 'suspended') AC.resume();
+  if(state === 'start') {
+    state = 'playing';
+    initGame(true);
+    document.getElementById('startScreen').classList.remove('active');
+    document.getElementById('hudDisplay') && (document.getElementById('hudDisplay').style.display='flex');
+    sfxStart();
+    return;
+  }
+  if(state === 'playing') {
+    const cfg = getConfig();
+    ship.vy = cfg.flapForce;
+    sfxBoost();
+    // mini boost particles
+    spawnParticles(ship.x+ship.w*0.3, ship.y+ship.h*0.5, 8, ['#00ffff','#aaccff','#ffffff']);
+  }
+}
+
+function restart() {
+  document.getElementById('gameOverScreen').classList.remove('active');
+  state = 'playing';
+  initGame(true);
+  sfxStart();
+}
+
+window.addEventListener('keydown', e => {
+  if(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW') { e.preventDefault(); flap(); }
+});
+canvas.addEventListener('pointerdown', e => { e.preventDefault(); flap(); });
+document.getElementById('restartBtn').addEventListener('click', restart);
+document.getElementById('restartBtn').addEventListener('touchstart', e=>{ e.preventDefault(); restart(); });
+
+// ─── Kick Off ─────────────────────────────────────────────────────────────────
+document.getElementById('startBest').textContent = highScore;
+initGame(true);
+state = 'start';
+document.getElementById('startScreen').classList.add('active');
+gameLoop();
+</script>
+</body>
+</html>
